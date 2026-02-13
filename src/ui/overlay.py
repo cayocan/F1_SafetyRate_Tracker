@@ -21,6 +21,12 @@ class SROverlay(QWidget):
         """
         super().__init__()
         self.update_callback = update_callback
+        
+        # State management
+        self.simple_mode = False  # Toggle between full/simple display
+        self.scale_factor = 1.0   # Scale for resizing (0.5 to 2.0)
+        self.is_visible = True    # For toggle visibility
+        
         self.init_ui()
         
         # Update timer
@@ -51,8 +57,12 @@ class SROverlay(QWidget):
         self.title_label = self._create_label("F1 SAFETY RATING", 16, bold=True)
         layout.addWidget(self.title_label)
         
+        # License Class (iRacing style)
+        self.license_label = self._create_label("Class C", 20, bold=True, color="#FFAA00")
+        layout.addWidget(self.license_label)
+        
         # SR Display
-        self.sr_label = self._create_label("SR: --.-", 32, bold=True, color="#00FF00")
+        self.sr_label = self._create_label("SR: 2.50", 32, bold=True, color="#FFAA00")
         layout.addWidget(self.sr_label)
         
         # Session status
@@ -76,7 +86,10 @@ class SROverlay(QWidget):
         layout.addWidget(self.avg_label)
         
         # Instructions
-        self.help_label = self._create_label("Drag to move | Ctrl+Q to close", 8, color="#666666")
+        self.help_label = self._create_label(
+            "Drag to move | Ctrl+Q: Hide/Show | Ctrl+M: Simple Mode | Ctrl+=/−: Resize", 
+            8, color="#666666"
+        )
         layout.addWidget(self.help_label)
         
         self.setLayout(layout)
@@ -112,13 +125,28 @@ class SROverlay(QWidget):
     
     def _update_labels(self, stats: Dict[str, Any]):
         """Update label texts with new stats"""
-        # SR with color coding
-        sr = stats.get('current_sr', 0.0)
-        sr_color = self._get_sr_color(sr)
-        self.sr_label.setText(f"SR: {sr:.1f}")
+        # SR with license class and color coding (iRacing style)
+        sr = stats.get('current_sr', 2.50)
+        license_class = stats.get('license_class', 'C')
+        license_color = stats.get('license_color', '#FFAA00')
+        
+        # Update license class label
+        self.license_label.setText(f"Class {license_class}")
+        self.license_label.setStyleSheet(f"""
+            QLabel {{
+                color: {license_color};
+                background-color: rgba(0, 0, 0, 200);
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+            }}
+        """)
+        
+        # Update SR with same color as license
+        self.sr_label.setText(f"SR: {sr:.2f}")
         self.sr_label.setStyleSheet(f"""
             QLabel {{
-                color: {sr_color};
+                color: {license_color};
                 background-color: rgba(0, 0, 0, 200);
                 padding: 10px;
                 border-radius: 5px;
@@ -160,19 +188,6 @@ class SROverlay(QWidget):
         avg = stats.get('avg_incidents_per_corner', 0.0)
         self.avg_label.setText(f"Avg Incidents/Corner: {avg:.3f}")
     
-    def _get_sr_color(self, sr: float) -> str:
-        """Get color based on SR value"""
-        if sr >= 90:
-            return "#00FF00"  # Green
-        elif sr >= 75:
-            return "#88FF00"  # Yellow-green
-        elif sr >= 60:
-            return "#FFFF00"  # Yellow
-        elif sr >= 45:
-            return "#FFAA00"  # Orange
-        else:
-            return "#FF0000"  # Red
-    
     # Mouse event handlers for dragging
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -192,8 +207,123 @@ class SROverlay(QWidget):
     
     def keyPressEvent(self, event):
         """Handle keyboard shortcuts"""
+        # Ctrl+Q: Toggle visibility (hide/show)
         if event.key() == Qt.Key.Key_Q and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            self.close()
+            self.toggle_visibility()
+            event.accept()
+        
+        # Ctrl+M: Toggle simple mode
+        elif event.key() == Qt.Key.Key_M and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.toggle_simple_mode()
+            event.accept()
+        
+        # Ctrl+= or Ctrl++: Increase size
+        elif (event.key() in [Qt.Key.Key_Equal, Qt.Key.Key_Plus]) and \
+             event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.resize_overlay(1.1)
+            event.accept()
+        
+        # Ctrl+-: Decrease size
+        elif event.key() == Qt.Key.Key_Minus and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.resize_overlay(0.9)
+            event.accept()
+        
+        # Ctrl+0: Reset size
+        elif event.key() == Qt.Key.Key_0 and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.resize_overlay(1.0, absolute=True)
+            event.accept()
+    
+    def toggle_visibility(self):
+        """Toggle overlay visibility (hide/show)"""
+        if self.is_visible:
+            self.hide()
+            self.is_visible = False
+        else:
+            self.show()
+            self.is_visible = True
+    
+    def toggle_simple_mode(self):
+        """Toggle between simple and detailed display modes"""
+        self.simple_mode = not self.simple_mode
+        
+        # Show/hide labels based on mode
+        if self.simple_mode:
+            # Simple mode: Show only SR, license, incidents, and status
+            self.title_label.hide()
+            self.corners_label.hide()
+            self.cpi_label.hide()
+            self.avg_label.hide()
+            self.help_label.hide()
+        else:
+            # Full mode: Show everything
+            self.title_label.show()
+            self.corners_label.show()
+            self.cpi_label.show()
+            self.avg_label.show()
+            self.help_label.show()
+        
+        # Adjust window size
+        self.adjustSize()
+    
+    def resize_overlay(self, factor: float, absolute: bool = False):
+        """Resize the overlay
+        
+        Args:
+            factor: Scale factor (multiply current size) or absolute scale if absolute=True
+            absolute: If True, set scale to factor directly (reset)
+        """
+        if absolute:
+            self.scale_factor = factor
+        else:
+            self.scale_factor *= factor
+        
+        # Clamp scale between 0.5x and 2.5x
+        self.scale_factor = max(0.5, min(2.5, self.scale_factor))
+        
+        # Calculate new size
+        base_width = 350
+        base_height = 250
+        new_width = int(base_width * self.scale_factor)
+        new_height = int(base_height * self.scale_factor)
+        
+        # Resize window
+        self.resize(new_width, new_height)
+        
+        # Update font sizes
+        self._update_font_sizes()
+    
+    def _update_font_sizes(self):
+        """Update all label font sizes based on scale factor"""
+        base_sizes = {
+            self.title_label: 16,
+            self.license_label: 20,
+            self.sr_label: 32,
+            self.status_label: 12,
+            self.incidents_label: 12,
+            self.corners_label: 12,
+            self.cpi_label: 12,
+            self.avg_label: 10,
+            self.help_label: 8
+        }
+        
+        for label, base_size in base_sizes.items():
+            font = label.font()
+            new_size = max(6, int(base_size * self.scale_factor))  # Minimum 6pt
+            font.setPointSize(new_size)
+            label.setFont(font)
+    
+    def wheelEvent(self, event):
+        """Handle mouse wheel for resizing (with Ctrl)"""
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            # Scroll up = zoom in, scroll down = zoom out
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.resize_overlay(1.05)
+            elif delta < 0:
+                self.resize_overlay(0.95)
+            event.accept()
+        else:
+            event.ignore()
 
 
 def create_overlay(update_callback: Optional[Callable[[], Dict[str, Any]]] = None) -> tuple:

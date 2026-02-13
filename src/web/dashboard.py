@@ -121,6 +121,20 @@ class Dashboard:
                 return jsonify(stats)
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/reset-sr', methods=['POST'])
+        def reset_sr():
+            """Reset Safety Rating to initial value (2.50)"""
+            try:
+                # Reset SR to 2.50 (Rookie)
+                self.db.update_sr(2.50)
+                return jsonify({
+                    'success': True,
+                    'message': 'Safety Rating reset to 2.50 (Rookie)',
+                    'new_sr': 2.50
+                })
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
     
     def run(self, debug: bool = False):
         """

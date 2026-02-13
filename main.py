@@ -10,7 +10,7 @@ from typing import Optional
 
 from src.adapters import F12019Adapter
 from src.core import Database, SessionManager, SREngine
-from src.ui import create_overlay
+from src.ui import create_overlay, F1TrayIcon
 from src.web import Dashboard
 
 
@@ -66,6 +66,11 @@ class F1SafetyRateTracker:
         self.overlay_window = None
         self.dashboard = None
         self.dashboard_thread = None
+        self.tray_icon = None
+        
+        # Sync timer for database updates
+        self.last_db_sync_time = 0
+        self.db_sync_interval = 2.0  # Sync to database every 2 seconds during race
         
         # Statistics
         self.packets_received = 0
@@ -180,6 +185,9 @@ class F1SafetyRateTracker:
                     # If race is active, update SR engine
                     if self.session_manager.is_race_active():
                         self.sr_engine.process_telemetry(race_state)
+                        
+                        # Periodically sync SR to database during active race
+                        self._sync_sr_to_database_if_needed()
                 
             except socket.timeout:
                 continue
@@ -201,6 +209,28 @@ class F1SafetyRateTracker:
         
         return stats
     
+    def _sync_sr_to_database_if_needed(self):
+        """Sync SR to database during active race (every few seconds)"""
+        import time
+        current_time = time.time()
+        
+        # Only sync if enough time has passed
+        if current_time - self.last_db_sync_time >= self.db_sync_interval:
+            try:
+                current_sr = self.sr_engine.current_sr
+                self.db.update_sr(current_sr)
+                self.last_db_sync_time = current_time
+                # Silent sync - no need to log every time
+            except Exception as e:
+                print(f"[Warning] Failed to sync SR to database: {e}")
+    
+    def _update_tray_tooltip(self):
+        """Update system tray tooltip with current SR info"""
+        if self.tray_icon and self.sr_engine:
+            sr = self.sr_engine.current_sr
+            license_class, _ = self.sr_engine.get_license_class()
+            self.tray_icon.update_tooltip(sr, license_class)
+    
     def start(self):
         """Start the application"""
         self.running = True
@@ -214,27 +244,43 @@ class F1SafetyRateTracker:
             self.dashboard_thread = self.dashboard.run_threaded()
             print(f"[Dashboard] Web interface available at http://127.0.0.1:{self.web_port}")
         
+        # Start telemetry in background thread
+        telemetry_thread = Thread(target=self._telemetry_loop, daemon=True)
+        telemetry_thread.start()
+        
         # Start overlay (must be on main thread for PyQt6)
         if self.enable_overlay:
-            # Start telemetry in background thread
-            telemetry_thread = Thread(target=self._telemetry_loop, daemon=True)
-            telemetry_thread.start()
-            
-            # Create overlay on main thread
             print("[Overlay] Starting real-time overlay...")
             self.overlay_app, self.overlay_window = create_overlay(
                 update_callback=self._get_overlay_stats
             )
             
+            # Create system tray icon
+            print("[System Tray] Creating tray icon...")
+            self.tray_icon = F1TrayIcon(self.overlay_app, self, self.web_port)
+            self.tray_icon.show_startup_message()
+            
+            # Update tray tooltip periodically
+            from PyQt6.QtCore import QTimer
+            self.tooltip_timer = QTimer()
+            self.tooltip_timer.timeout.connect(self._update_tray_tooltip)
+            self.tooltip_timer.start(5000)  # Update every 5 seconds
+            
             # Handle Ctrl+C gracefully
             signal.signal(signal.SIGINT, lambda *args: self.stop())
+            
+            print("[Main] Application running in background. Check system tray icon.")
+            print("[Main] Right-click tray icon for options, or press Ctrl+C to exit.")
             
             # Run Qt event loop (blocking)
             self.overlay_app.exec()
         else:
-            # No overlay, just run telemetry loop on main thread
+            # No overlay, just keep running
+            print("[Main] Running without overlay. Press Ctrl+C to exit.")
             try:
-                self._telemetry_loop()
+                while self.running:
+                    import time
+                    time.sleep(1)
             except KeyboardInterrupt:
                 print("\n[Main] Shutting down...")
         

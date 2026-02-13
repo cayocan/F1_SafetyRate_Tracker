@@ -156,6 +156,54 @@
             border-radius: 10px;
             margin: 20px 0;
         }
+        
+        .license-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        
+        .btn-reset {
+            background: #e10600;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.3s ease;
+        }
+        
+        .btn-reset:hover {
+            background: #ff0800;
+        }
+        
+        .btn-reset:active {
+            background: #b30500;
+        }
+        
+        .sync-indicator {
+            display: inline-block;
+            padding: 5px 10px;
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+            color: #00ff00;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 15px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -164,12 +212,15 @@
         <header>
             <h1>🏎️ F1 Safety Rating Tracker</h1>
             <p>Track your racing incidents and improve your safety rating</p>
+            <span class="sync-indicator" id="sync-indicator">● LIVE</span>
         </header>
         
         <div class="stats-grid">
             <div class="stat-card">
                 <h2>Current Safety Rating</h2>
                 <div class="stat-value" id="current-sr">--.-</div>
+                <div id="license-badge" class="license-badge">Loading...</div>
+                <button class="btn-reset" onclick="resetSafetyRating()">Reset to 2.50</button>
             </div>
             <div class="stat-card">
                 <h2>Total Distance</h2>
@@ -204,13 +255,52 @@
     </div>
     
     <script>
+        // Get license class and color based on SR
+        function getLicenseClass(sr) {
+            if (sr >= 7.0) {
+                return { name: 'SS', color: '#FFD700' };
+            } else if (sr >= 6.0) {
+                return { name: 'A', color: '#0066FF' };
+            } else if (sr >= 5.0) {
+                return { name: 'B', color: '#00AA00' };
+            } else if (sr >= 4.0) {
+                return { name: 'C', color: '#FFAA00' };
+            } else if (sr >= 3.0) {
+                return { name: 'D', color: '#FF0000' };
+            } else {
+                return { name: 'Rookie', color: '#888888' };
+            }
+        }
+        
+        // Update sync indicator
+        function updateSyncIndicator() {
+            const indicator = document.getElementById('sync-indicator');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+            indicator.textContent = `● LIVE (${timeStr})`;
+            indicator.style.opacity = '1';
+            setTimeout(() => {
+                indicator.style.opacity = '0.5';
+            }, 500);
+        }
+        
         // Fetch and display overall stats
         async function loadStats() {
             try {
                 const response = await fetch('/api/stats');
                 const data = await response.json();
                 
-                document.getElementById('current-sr').textContent = data.current_sr.toFixed(1);
+                // Display SR
+                const sr = data.current_sr;
+                document.getElementById('current-sr').textContent = sr.toFixed(2);
+                
+                // Display license class badge
+                const license = getLicenseClass(sr);
+                const badge = document.getElementById('license-badge');
+                badge.textContent = `License: ${license.name}`;
+                badge.style.backgroundColor = license.color;
+                badge.style.color = license.name === 'Rookie' ? '#ffffff' : '#000000';
+                
                 document.getElementById('total-distance').textContent = (data.total_distance / 1000).toFixed(1) + ' km';
                 
                 if (data.last_race) {
@@ -221,8 +311,39 @@
                         <span class="${changeClass}">${changeSymbol}${data.last_race.sr_change.toFixed(2)} SR</span>
                     `;
                 }
+                
+                // Update sync indicator
+                updateSyncIndicator();
             } catch (error) {
                 console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Reset Safety Rating to 2.50
+        async function resetSafetyRating() {
+            if (!confirm('Are you sure you want to reset your Safety Rating to 2.50 (Rookie)?\n\nThis action cannot be undone!')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/reset-sr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Safety Rating has been reset to 2.50 (Rookie)');
+                    loadStats(); // Refresh stats
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error resetting SR:', error);
+                alert('Failed to reset Safety Rating. Please try again.');
             }
         }
         
@@ -259,9 +380,9 @@
                         <tr>
                             <td>${new Date(session.date).toLocaleString()}</td>
                             <td>${session.track}</td>
-                            <td>${session.start_sr}</td>
-                            <td>${session.end_sr}</td>
-                            <td><span class="sr-change ${changeClass}">${changeSymbol}${session.sr_change}</span></td>
+                            <td>${session.start_sr.toFixed(2)}</td>
+                            <td>${session.end_sr.toFixed(2)}</td>
+                            <td><span class="sr-change ${changeClass}">${changeSymbol}${session.sr_change.toFixed(2)}</span></td>
                             <td>${session.incidents}</td>
                         </tr>
                     `;
@@ -307,8 +428,8 @@
                         scales: {
                             y: {
                                 beginAtZero: false,
-                                min: 0,
-                                max: 100,
+                                min: 2.0,
+                                max: 8.0,
                                 ticks: { color: '#ffffff' },
                                 grid: { color: 'rgba(255, 255, 255, 0.1)' }
                             },
@@ -354,8 +475,8 @@
                         <tr>
                             <td>${track.track}</td>
                             <td>${track.races}</td>
-                            <td>${track.avg_incidents}</td>
-                            <td><span class="sr-change ${changeClass}">${track.avg_sr_change}</span></td>
+                            <td>${track.avg_incidents.toFixed(1)}</td>
+                            <td><span class="sr-change ${changeClass}">${track.avg_sr_change.toFixed(2)}</span></td>
                         </tr>
                     `;
                 });
@@ -375,8 +496,13 @@
             loadSRChart();
             loadTrackStats();
             
-            // Refresh stats periodically
-            setInterval(loadStats, 5000);
+            // Refresh all data periodically
+            setInterval(() => {
+                loadStats();           // Update SR and current stats
+                loadHistory();         // Update race history table
+                loadSRChart();         // Update SR chart
+                loadTrackStats();      // Update track statistics
+            }, 2000);  // Refresh every 2 seconds for better sync
         });
     </script>
 </body>

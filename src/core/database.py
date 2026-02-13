@@ -69,11 +69,11 @@ class Database:
             )
         """)
         
-        # User profile table
+        # User profile table (iRacing-style SR: 0.00-4.99, initial 2.50)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_profile (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                current_sr FLOAT NOT NULL DEFAULT 100.0,
+                current_sr FLOAT NOT NULL DEFAULT 2.50,
                 total_distance FLOAT NOT NULL DEFAULT 0.0
             )
         """)
@@ -131,11 +131,25 @@ class Database:
     # === User Profile Methods ===
     
     def get_current_sr(self) -> float:
-        """Get current Safety Rating"""
+        """Get current Safety Rating (iRacing style: 2.50-7.99)"""
         cursor = self.conn.cursor()
         cursor.execute("SELECT current_sr FROM user_profile WHERE id = 1")
         row = cursor.fetchone()
-        return row[0] if row else 100.0
+        
+        if row:
+            sr = row[0]
+            # Convert legacy values (0-100) to new scale (2.50-7.99)
+            if sr > 10.0:
+                normalized = sr / 100.0
+                sr = 2.50 + (normalized * (7.99 - 2.50))
+            # Ensure within valid range
+            sr = max(2.50, min(7.99, sr))
+            return sr
+        else:
+            # Initialize with Rookie (2.50)
+            cursor.execute("INSERT INTO user_profile (id, current_sr) VALUES (1, 2.50)")
+            self.conn.commit()
+            return 2.50
     
     def update_sr(self, new_sr: float):
         """Update current Safety Rating"""

@@ -10,22 +10,33 @@ A complete ecosystem for tracking your F1 2019 Safety Rating (SR) with real-time
 - Session detection (Practice, Qualifying, Race)
 - Incident tracking (Off-track, Spins, Collisions)
 
-### 📊 Safety Rating System
-- iRacing-style moving average over corners
+### 📊 Safety Rating System (iRacing Style)
+- **Initial SR:** 2.50 (Class C)
+- **SR Range:** 0.00 to 4.99
+- **License Classes:**
+  - 🏆 **A Class** (4.00-4.99) - Blue
+  - 🥈 **B Class** (3.00-3.99) - Green
+  - 🥉 **C Class** (2.00-2.99) - Orange
+  - 📛 **D Class** (1.00-1.99) - Red
+  - 👶 **Rookie** (0.00-0.99) - Gray
+- Moving average over 100 corners
 - Incident classification:
   - **1x** (Off-track): 1 point
   - **2x** (Spin): 2 points
   - **4x** (Collision): 4 points
 - Corners Per Incident (CPI) calculation
-- Historical SR tracking
+- Historical SR and license progression tracking
 
 ### 🖥️ Real-time Overlay (PyQt6)
 - Transparent window overlay
-- Live SR display with color coding
+- Live SR display (0.00-4.99) with color coding
+- **License Class display** (Rookie/D/C/B/A)
 - Incident counters (1x, 2x, 4x)
 - Corners completed
 - CPI meter
-- Draggable and always-on-top
+- Draggable, resizable, and always-on-top
+- **Simple mode** for focused racing (Ctrl+M)
+- **Keyboard shortcuts** for control
 
 ### 🌐 Web Dashboard
 - Race history with statistics
@@ -223,11 +234,32 @@ F1_SafetyRate_Tracker/
 - **Start Trigger:** `m_sessionType == 10` (Race) AND `m_sessionTime > 0`
 - **End Trigger:** Session type changes OR extended pause OR Result Screen
 
-### Safety Rating Algorithm
-1. Track incidents per corner
-2. Maintain moving average over last 100 corners
-3. Calculate SR: `SR = 100 - (avg_incidents * multiplier)`
-4. Clamp result between 0-100
+### Safety Rating Algorithm (iRacing System)
+
+**SR Range:** 0.00 to 4.99 (same as iRacing)
+
+1. **Initial SR:** 2.50 (Class C - safe starting point)
+2. Track incidents per corner
+3. Maintain moving average over last 100 corners
+4. Calculate SR based on incident rate:
+   ```
+   target_rate = 0.4 incidents/corner
+   sr_delta = (target_rate - actual_rate) * 0.4
+   SR = 2.50 + sr_delta
+   ```
+5. Clamp result between 0.00 and 4.99
+
+**License Classes:**
+- 🏆 **A** (4.00-4.99): Elite drivers, minimal incidents
+- 🥈 **B** (3.00-3.99): Advanced, very clean driving
+- 🥉 **C** (2.00-2.99): Competent, moderate safety
+- 📛 **D** (1.00-1.99): Developing, needs improvement  
+- 👶 **Rookie** (0.00-0.99): Beginner, high incident rate
+
+**Target Performance:**
+- < 0.4 incidents/corner → SR increases
+- > 0.4 incidents/corner → SR decreases
+- Clean corners help you level up!
 
 ### Incident Detection
 - **Off-track (1x):** Detected via `m_currentLapInvalid` flag
@@ -245,8 +277,16 @@ F1_SafetyRate_Tracker/
 ### SQL Queries
 View your stats directly:
 ```sql
--- Current SR
-SELECT current_sr FROM user_profile;
+-- Current SR and License Class
+SELECT current_sr,
+       CASE 
+           WHEN current_sr >= 4.0 THEN 'A'
+           WHEN current_sr >= 3.0 THEN 'B'
+           WHEN current_sr >= 2.0 THEN 'C'
+           WHEN current_sr >= 1.0 THEN 'D'
+           ELSE 'Rookie'
+       END as license_class
+FROM user_profile;
 
 -- Recent races
 SELECT * FROM sessions ORDER BY start_time DESC LIMIT 10;
@@ -279,9 +319,44 @@ GROUP BY t.name;
 
 ## Overlay Controls
 
-- **Drag to move:** Left-click and drag anywhere
-- **Close:** `Ctrl+Q` or close main window
-- **Always on top:** Stays above game window
+### Movement
+- **Drag to move:** Left-click and drag anywhere on the overlay
+- **Always on top:** Stays above game window automatically
+
+### Keyboard Shortcuts
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Q` | **Toggle visibility** - Hide/show overlay (doesn't close app) |
+| `Ctrl+M` | **Simple mode** - Toggle between full info and minimal display |
+| `Ctrl++` or `Ctrl+=` | **Increase size** - Make overlay bigger |
+| `Ctrl+-` | **Decrease size** - Make overlay smaller |
+| `Ctrl+0` | **Reset size** - Return to default size |
+| `Ctrl+Scroll` | **Resize** - Use mouse wheel with Ctrl to zoom in/out |
+
+### Display Modes
+**Full Mode** (default):
+- Safety Rating with color coding (0.00-4.99)
+- **License Class** (A/B/C/D/Rookie)
+- Session status (Racing/Idle)
+- Detailed incident breakdown (1x, 2x, 4x)
+- Corners completed
+- CPI (Corners Per Incident)
+- Average incidents per corner
+- Help text with shortcuts
+
+**Simple Mode** (Ctrl+M):
+- Safety Rating (large)
+- **License Class**
+- Session status
+- Incident counts only
+- Minimal visual clutter for focused racing
+
+### Tips
+- Use **Ctrl+Q** to quickly hide overlay when not racing
+- Press **Ctrl+Q** again to bring it back
+- **Simple mode** is perfect for competitive racing (less distraction)
+- Resize with **Ctrl+Scroll** for perfect fit on your screen
+- Overlay position is saved between sessions
 
 ## Troubleshooting
 
@@ -326,6 +401,7 @@ GROUP BY t.name;
 
 ## 📚 Additional Documentation
 
+- **[KEYBOARD_SHORTCUTS.md](KEYBOARD_SHORTCUTS.md)** - ⌨️ Complete keyboard shortcuts reference
 - **[LAUNCHER_GUIDE.md](LAUNCHER_GUIDE.md)** - Complete guide for the one-click launcher (`run.bat`/`run.ps1`)
 - **[QUICK_START_VENV.md](QUICK_START_VENV.md)** - Virtual environment quick reference
 - Inline code comments for implementation details
