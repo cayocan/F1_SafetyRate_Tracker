@@ -1,0 +1,20 @@
+{
+  "include": [
+    "src",
+    "main.py"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv"
+  ],
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.8",
+  "pythonPlatform": "Windows",
+  "executionEnvironments": [
+    {
+      "root": "src"
+    }
+  ]
+}

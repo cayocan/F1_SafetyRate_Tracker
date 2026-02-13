@@ -1,0 +1,14 @@
+[MASTER]
+ignore=.git,__pycache__,.vscode
+
+[MESSAGES CONTROL]
+disable=
+    import-error,
+    no-name-in-module,
+    wrong-import-position
+
+[BASIC]
+good-names=i,j,k,ex,Run,_,db,sr,id,x,y
+
+[FORMAT]
+max-line-length=120

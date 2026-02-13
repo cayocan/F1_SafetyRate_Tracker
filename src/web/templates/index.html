@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Safety Rating Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+            color: #ffffff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 2px solid #e10600;
+        }
+        
+        h1 {
+            font-size: 3em;
+            color: #e10600;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .stat-card h2 {
+            font-size: 1.2em;
+            color: #aaaaaa;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            font-size: 3em;
+            font-weight: bold;
+            color: #00ff00;
+        }
+        
+        .stat-value.negative {
+            color: #ff4444;
+        }
+        
+        .stat-value.positive {
+            color: #00ff00;
+        }
+        
+        .section {
+            margin: 40px 0;
+        }
+        
+        .section h2 {
+            font-size: 2em;
+            margin-bottom: 20px;
+            color: #e10600;
+            border-left: 5px solid #e10600;
+            padding-left: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+        }
+        
+        th {
+            background: rgba(225, 6, 0, 0.2);
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 1px;
+        }
+        
+        tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        
+        tr:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        .sr-change {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        
+        .sr-change.positive {
+            color: #00ff00;
+            background: rgba(0, 255, 0, 0.1);
+        }
+        
+        .sr-change.negative {
+            color: #ff4444;
+            background: rgba(255, 68, 68, 0.1);
+        }
+        
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        canvas {
+            max-height: 400px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.5em;
+            color: #888888;
+        }
+        
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+            color: #ffaaaa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏎️ F1 Safety Rating Tracker</h1>
+            <p>Track your racing incidents and improve your safety rating</p>
+        </header>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h2>Current Safety Rating</h2>
+                <div class="stat-value" id="current-sr">--.-</div>
+            </div>
+            <div class="stat-card">
+                <h2>Total Distance</h2>
+                <div class="stat-value" id="total-distance">--- km</div>
+            </div>
+            <div class="stat-card">
+                <h2>Last Race</h2>
+                <div style="font-size: 1.2em; color: #aaaaaa;" id="last-race">No races yet</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>📈 Safety Rating History</h2>
+            <div class="chart-container">
+                <canvas id="sr-chart"></canvas>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🏁 Recent Races</h2>
+            <div id="history-table">
+                <div class="loading">Loading race history...</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🏆 Track Performance</h2>
+            <div id="track-stats">
+                <div class="loading">Loading track statistics...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Fetch and display overall stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                document.getElementById('current-sr').textContent = data.current_sr.toFixed(1);
+                document.getElementById('total-distance').textContent = (data.total_distance / 1000).toFixed(1) + ' km';
+                
+                if (data.last_race) {
+                    const changeClass = data.last_race.sr_change >= 0 ? 'positive' : 'negative';
+                    const changeSymbol = data.last_race.sr_change >= 0 ? '+' : '';
+                    document.getElementById('last-race').innerHTML = `
+                        ${data.last_race.track}<br>
+                        <span class="${changeClass}">${changeSymbol}${data.last_race.sr_change.toFixed(2)} SR</span>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Fetch and display race history
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history');
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    document.getElementById('history-table').innerHTML = '<div class="loading">No races recorded yet</div>';
+                    return;
+                }
+                
+                let html = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Track</th>
+                                <th>Start SR</th>
+                                <th>End SR</th>
+                                <th>Change</th>
+                                <th>Incidents</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.forEach(session => {
+                    const changeClass = session.sr_change >= 0 ? 'positive' : 'negative';
+                    const changeSymbol = session.sr_change >= 0 ? '+' : '';
+                    html += `
+                        <tr>
+                            <td>${new Date(session.date).toLocaleString()}</td>
+                            <td>${session.track}</td>
+                            <td>${session.start_sr}</td>
+                            <td>${session.end_sr}</td>
+                            <td><span class="sr-change ${changeClass}">${changeSymbol}${session.sr_change}</span></td>
+                            <td>${session.incidents}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+                document.getElementById('history-table').innerHTML = html;
+            } catch (error) {
+                document.getElementById('history-table').innerHTML = '<div class="error">Error loading history</div>';
+                console.error('Error loading history:', error);
+            }
+        }
+        
+        // Fetch and display SR chart
+        async function loadSRChart() {
+            try {
+                const response = await fetch('/api/sr-history');
+                const data = await response.json();
+                
+                const ctx = document.getElementById('sr-chart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates.map(d => new Date(d).toLocaleDateString()),
+                        datasets: [{
+                            label: 'Safety Rating',
+                            data: data.sr_values,
+                            borderColor: '#e10600',
+                            backgroundColor: 'rgba(225, 6, 0, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff' }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                min: 0,
+                                max: 100,
+                                ticks: { color: '#ffffff' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#ffffff' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading SR chart:', error);
+            }
+        }
+        
+        // Fetch and display track stats
+        async function loadTrackStats() {
+            try {
+                const response = await fetch('/api/track-stats');
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    document.getElementById('track-stats').innerHTML = '<div class="loading">No track data yet</div>';
+                    return;
+                }
+                
+                let html = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Track</th>
+                                <th>Races</th>
+                                <th>Avg Incidents</th>
+                                <th>Avg SR Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.forEach(track => {
+                    const changeClass = track.avg_sr_change >= 0 ? 'positive' : 'negative';
+                    html += `
+                        <tr>
+                            <td>${track.track}</td>
+                            <td>${track.races}</td>
+                            <td>${track.avg_incidents}</td>
+                            <td><span class="sr-change ${changeClass}">${track.avg_sr_change}</span></td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+                document.getElementById('track-stats').innerHTML = html;
+            } catch (error) {
+                document.getElementById('track-stats').innerHTML = '<div class="error">Error loading track stats</div>';
+                console.error('Error loading track stats:', error);
+            }
+        }
+        
+        // Initialize dashboard
+        window.addEventListener('load', () => {
+            loadStats();
+            loadHistory();
+            loadSRChart();
+            loadTrackStats();
+            
+            // Refresh stats periodically
+            setInterval(loadStats, 5000);
+        });
+    </script>
+</body>
+</html>

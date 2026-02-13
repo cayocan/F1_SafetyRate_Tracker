@@ -1,0 +1,9 @@
+# Python Dependencies for F1 Safety Rating Tracker
+
+# Core dependencies
+PyQt6>=6.4.0
+Flask>=2.3.0
+Werkzeug>=2.3.0
+
+# Optional but recommended
+colorama>=0.4.6
