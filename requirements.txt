@@ -7,3 +7,4 @@ Werkzeug>=2.3.0
 
 # Optional but recommended
 colorama>=0.4.6
+requests>=2.31.0  # For Docker health check
