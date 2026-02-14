@@ -65,6 +65,17 @@ class SessionManager:
         track_id = race_state.track_id
         is_paused = race_state.game_paused
         
+        # Debug: print session info every 5 seconds in race
+        if hasattr(self, '_last_debug_time'):
+            import time
+            if time.time() - self._last_debug_time > 5.0:
+                if current_session_type == 10:  # Race
+                    print(f"[SessionManager] DEBUG - Type:{current_session_type} Time:{session_time:.1f}s State:{self.current_state.value}")
+                self._last_debug_time = time.time()
+        else:
+            import time
+            self._last_debug_time = time.time()
+        
         # Detect race start
         if self._should_start_race(current_session_type, session_time, session_uid):
             self._start_race(session_uid, track_id, session_time)

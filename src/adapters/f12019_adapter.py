@@ -12,11 +12,25 @@ from .base_adapter import BaseAdapter, RaceState
 class F12019Adapter(BaseAdapter):
     """Adapter for F1 2019 telemetry protocol"""
     
-    def __init__(self):
+    def __init__(self, telemetry_logger=None):
         self.last_race_state = None
+        self._packet_counts = {}  # Track packet types for debugging
+        self._last_debug_print = 0
+        self.telemetry_logger = telemetry_logger
         
     def get_game_version(self) -> str:
         return "F1 2019"
+    
+    def _debug_print_state(self):
+        """Print debug info every 10 seconds"""
+        current_time = time.time()
+        if current_time - self._last_debug_print >= 10.0:
+            if self.last_race_state:
+                print(f"[F12019Adapter] DEBUG - SessionType:{self.last_race_state.session_type} "
+                      f"Packets: Session={self._packet_counts.get(1, 0)} "
+                      f"LapData={self._packet_counts.get(2, 0)} "
+                      f"Damage={self._packet_counts.get(6, 0)}")
+            self._last_debug_print = current_time
     
     def parse_packet(self, data: bytes) -> Optional[RaceState]:
         """
@@ -48,14 +62,32 @@ class F12019Adapter(BaseAdapter):
             # Route to specific parser based on packet ID
             if packet_id == 1:
                 # Session packet
-                return self._parse_session_packet(data, session_uid, session_time, player_car_index)
+                self._packet_counts[1] = self._packet_counts.get(1, 0) + 1
+                result = self._parse_session_packet(data, session_uid, session_time, player_car_index)
+                if self.telemetry_logger:
+                    self.telemetry_logger.log_packet(1, result, len(data))
+                self._debug_print_state()
+                return result
             elif packet_id == 2:
                 # Lap Data packet
-                return self._parse_lap_data_packet(data, session_uid, session_time, player_car_index)
+                self._packet_counts[2] = self._packet_counts.get(2, 0) + 1
+                result = self._parse_lap_data_packet(data, session_uid, session_time, player_car_index)
+                if self.telemetry_logger:
+                    self.telemetry_logger.log_packet(2, result, len(data))
+                self._debug_print_state()
+                return result
             elif packet_id == 6:
                 # Car Damage packet
-                return self._parse_car_damage_packet(data, session_uid, session_time, player_car_index)
+                self._packet_counts[6] = self._packet_counts.get(6, 0) + 1
+                result = self._parse_car_damage_packet(data, session_uid, session_time, player_car_index)
+                if self.telemetry_logger:
+                    self.telemetry_logger.log_packet(6, result, len(data))
+                self._debug_print_state()
+                return result
             else:
+                # Log unknown packets too
+                if self.telemetry_logger:
+                    self.telemetry_logger.log_packet(packet_id, None, len(data))
                 return None
                 
         except struct.error:
@@ -103,10 +135,11 @@ class F12019Adapter(BaseAdapter):
                 self.last_race_state.game_paused = game_paused
                 self.last_race_state.session_time = session_time
                 self.last_race_state.session_uid = session_uid
+                self.last_race_state.timestamp = time.time()
                 return self.last_race_state
             else:
                 # Create new state with defaults
-                return RaceState(
+                self.last_race_state = RaceState(
                     session_uid=session_uid,
                     session_type=session_type,
                     session_time=session_time,
@@ -120,6 +153,7 @@ class F12019Adapter(BaseAdapter):
                     rear_right_damage=0.0,
                     timestamp=time.time()
                 )
+                return self.last_race_state
         except struct.error:
             return None
     
@@ -167,14 +201,16 @@ class F12019Adapter(BaseAdapter):
                 self.last_race_state.is_off_track = current_lap_invalid
                 self.last_race_state.session_time = session_time
                 self.last_race_state.session_uid = session_uid
+                self.last_race_state.timestamp = time.time()
                 return self.last_race_state
             else:
-                return RaceState(
+                # Create with minimal info - session packet should come later
+                self.last_race_state = RaceState(
                     session_uid=session_uid,
-                    session_type=0,
+                    session_type=0,  # Will be updated by session packet
                     session_time=session_time,
                     game_paused=False,
-                    track_id=0,
+                    track_id=0,  # Will be updated by session packet
                     current_lap=current_lap_num,
                     is_off_track=current_lap_invalid,
                     front_left_damage=0.0,
@@ -183,6 +219,7 @@ class F12019Adapter(BaseAdapter):
                     rear_right_damage=0.0,
                     timestamp=time.time()
                 )
+                return self.last_race_state
         except struct.error:
             return None
     
@@ -226,14 +263,16 @@ class F12019Adapter(BaseAdapter):
                 self.last_race_state.rear_right_damage = rear_wing
                 self.last_race_state.session_time = session_time
                 self.last_race_state.session_uid = session_uid
+                self.last_race_state.timestamp = time.time()
                 return self.last_race_state
             else:
-                return RaceState(
+                # Create with minimal info - session packet should come later
+                self.last_race_state = RaceState(
                     session_uid=session_uid,
-                    session_type=0,
+                    session_type=0,  # Will be updated by session packet
                     session_time=session_time,
                     game_paused=False,
-                    track_id=0,
+                    track_id=0,  # Will be updated by session packet
                     current_lap=0,
                     is_off_track=False,
                     front_left_damage=front_left_wing,
@@ -242,5 +281,6 @@ class F12019Adapter(BaseAdapter):
                     rear_right_damage=rear_wing,
                     timestamp=time.time()
                 )
+                return self.last_race_state
         except struct.error:
             return None

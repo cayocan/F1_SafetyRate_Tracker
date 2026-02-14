@@ -12,6 +12,7 @@ from src.adapters import F12019Adapter
 from src.core import Database, SessionManager, SREngine
 from src.ui import create_overlay, F1TrayIcon
 from src.web import Dashboard
+from src.utils import TelemetryLogger
 
 
 class F1SafetyRateTracker:
@@ -21,7 +22,8 @@ class F1SafetyRateTracker:
                  udp_port: int = 20777,
                  web_port: int = 5000,
                  enable_overlay: bool = True,
-                 enable_dashboard: bool = True):
+                 enable_dashboard: bool = True,
+                 enable_telemetry_logging: bool = False):
         """
         Initialize F1 Safety Rating Tracker
         
@@ -30,6 +32,7 @@ class F1SafetyRateTracker:
             web_port: Port for web dashboard (default: 5000)
             enable_overlay: Show real-time overlay window
             enable_dashboard: Start web dashboard server
+            enable_telemetry_logging: Log all telemetry to files for debugging
         """
         print("=" * 60)
         print("F1 2019 SAFETY RATING TRACKER")
@@ -41,9 +44,14 @@ class F1SafetyRateTracker:
         self.enable_overlay = enable_overlay
         self.enable_dashboard = enable_dashboard
         
+        # Telemetry logger (for debugging)
+        self.telemetry_logger = TelemetryLogger(enabled=enable_telemetry_logging)
+        if enable_telemetry_logging:
+            print(f"[Init] Telemetry logging ENABLED")
+        
         # Components
         self.db = Database("history.db")
-        self.adapter = F12019Adapter()
+        self.adapter = F12019Adapter(telemetry_logger=self.telemetry_logger)
         self.sr_engine = SREngine(window_size=100, sr_multiplier=10.0)
         
         # Load current SR from database
@@ -102,7 +110,7 @@ class F1SafetyRateTracker:
         
         if success:
             print("\n" + "=" * 60)
-            print("🏁 RACE STARTED")
+            print("[RACE STARTED]")
             print("=" * 60)
             print(f"Track: {self.current_track_name}")
             print(f"Session ID: {session_uid}")
@@ -145,7 +153,7 @@ class F1SafetyRateTracker:
             cpi = self.sr_engine.calculate_cpi(total_corners)
             
             print("\n" + "=" * 60)
-            print("🏁 RACE FINISHED")
+            print("[RACE FINISHED]")
             print("=" * 60)
             print(f"Track: {self.current_track_name}")
             print(f"Final SR: {final_sr:.2f}")
@@ -327,6 +335,8 @@ def main():
                        help='Disable real-time overlay')
     parser.add_argument('--no-dashboard', action='store_true',
                        help='Disable web dashboard')
+    parser.add_argument('--log-telemetry', action='store_true',
+                       help='Enable telemetry logging to files (for debugging)')
     
     args = parser.parse_args()
     
@@ -335,7 +345,8 @@ def main():
         udp_port=args.udp_port,
         web_port=args.web_port,
         enable_overlay=not args.no_overlay,
-        enable_dashboard=not args.no_dashboard
+        enable_dashboard=not args.no_dashboard,
+        enable_telemetry_logging=args.log_telemetry
     )
     
     try:

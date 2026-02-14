@@ -93,7 +93,8 @@ class F1TrayIcon:
                 # Hide overlay
                 self.tracker.overlay_window.hide()
                 self.overlay_visible = False
-                self.overlay_action.setText("🖥️ Show Overlay")
+                if self.overlay_action:
+                    self.overlay_action.setText("🖥️ Show Overlay")
                 self.tray_icon.showMessage(
                     "F1 SR Tracker",
                     "Overlay hidden. Right-click tray icon to show again.",
@@ -104,7 +105,8 @@ class F1TrayIcon:
                 # Show overlay
                 self.tracker.overlay_window.show()
                 self.overlay_visible = True
-                self.overlay_action.setText("🖥️ Hide Overlay")
+                if self.overlay_action:
+                    self.overlay_action.setText("🖥️ Hide Overlay")
                 self.tray_icon.showMessage(
                     "F1 SR Tracker",
                     "Overlay visible. Use Ctrl+Q to toggle.",

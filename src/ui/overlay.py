@@ -3,10 +3,24 @@ PyQt6 Transparent Overlay for Real-time SR Display
 Shows Safety Rating, incidents, and session stats during racing
 """
 import sys
+import platform
 from typing import Dict, Any, Optional, Callable
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QShowEvent, QMouseEvent, QKeyEvent, QWheelEvent
+
+# Windows-specific imports for always-on-top in fullscreen games
+if platform.system() == 'Windows':
+    try:
+        import ctypes
+        from ctypes import wintypes
+        HWND_TOPMOST = -1
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_NOACTIVATE = 0x0010
+        SWP_SHOWWINDOW = 0x0040
+    except ImportError:
+        ctypes = None
 
 
 class SROverlay(QWidget):
@@ -33,17 +47,29 @@ class SROverlay(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_display)
         self.timer.start(100)  # Update every 100ms
+        
+        # Timer to force window on top (for fullscreen games)
+        if platform.system() == 'Windows' and ctypes:
+            self.topmost_timer = QTimer()
+            self.topmost_timer.timeout.connect(self.force_on_top)
+            self.topmost_timer.start(1000)  # Every second, ensure we're on top
+            print("[Overlay] IMPORTANTE: Configure F1 2019 para BORDERLESS WINDOW!")
+            print("[Overlay] O overlay NAO funciona em Fullscreen Exclusivo.")
+            print("[Overlay] Settings -> Video -> Display Mode -> Borderless Window")
     
     def init_ui(self):
         """Initialize UI components"""
         # Window settings
         self.setWindowTitle("F1 Safety Rating Overlay")
+        
+        # Multiple flags to ensure always on top, even over fullscreen games
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)  # Don't steal focus
         
         # Position and size
         self.setGeometry(50, 50, 350, 250)
@@ -97,6 +123,29 @@ class SROverlay(QWidget):
         # Make draggable
         self.dragging = False
         self.drag_position = None
+    
+    def showEvent(self, a0: Optional[QShowEvent]) -> None:
+        """Override showEvent to force on top when shown"""
+        super().showEvent(a0)
+        if platform.system() == 'Windows':
+            self.force_on_top()
+    
+    def force_on_top(self):
+        """Force window to stay on top using Windows API (for fullscreen games)"""
+        if platform.system() != 'Windows' or not ctypes:
+            return
+        
+        try:
+            hwnd = int(self.winId())
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            )
+        except Exception as e:
+            # Fail silently - not critical
+            pass
     
     def _create_label(self, text: str, size: int, bold: bool = False, 
                       color: str = "#FFFFFF") -> QLabel:
@@ -189,49 +238,57 @@ class SROverlay(QWidget):
         self.avg_label.setText(f"Avg Incidents/Corner: {avg:.3f}")
     
     # Mouse event handlers for dragging
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+    def mousePressEvent(self, a0: Optional[QMouseEvent]) -> None:
+        if a0 is None:
+            return
+        if a0.button() == Qt.MouseButton.LeftButton:
             self.dragging = True
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+            self.drag_position = a0.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            a0.accept()
     
-    def mouseMoveEvent(self, event):
-        if self.dragging and event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
+    def mouseMoveEvent(self, a0: Optional[QMouseEvent]) -> None:
+        if a0 is None:
+            return
+        if self.dragging and a0.buttons() == Qt.MouseButton.LeftButton and self.drag_position is not None:
+            self.move(a0.globalPosition().toPoint() - self.drag_position)
+            a0.accept()
     
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+    def mouseReleaseEvent(self, a0: Optional[QMouseEvent]) -> None:
+        if a0 is None:
+            return
+        if a0.button() == Qt.MouseButton.LeftButton:
             self.dragging = False
-            event.accept()
+            a0.accept()
     
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, a0: Optional[QKeyEvent]) -> None:
         """Handle keyboard shortcuts"""
+        if a0 is None:
+            return
         # Ctrl+Q: Toggle visibility (hide/show)
-        if event.key() == Qt.Key.Key_Q and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if a0.key() == Qt.Key.Key_Q and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.toggle_visibility()
-            event.accept()
+            a0.accept()
         
         # Ctrl+M: Toggle simple mode
-        elif event.key() == Qt.Key.Key_M and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        elif a0.key() == Qt.Key.Key_M and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.toggle_simple_mode()
-            event.accept()
+            a0.accept()
         
         # Ctrl+= or Ctrl++: Increase size
-        elif (event.key() in [Qt.Key.Key_Equal, Qt.Key.Key_Plus]) and \
-             event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        elif (a0.key() in [Qt.Key.Key_Equal, Qt.Key.Key_Plus]) and \
+             a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.resize_overlay(1.1)
-            event.accept()
+            a0.accept()
         
         # Ctrl+-: Decrease size
-        elif event.key() == Qt.Key.Key_Minus and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        elif a0.key() == Qt.Key.Key_Minus and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.resize_overlay(0.9)
-            event.accept()
+            a0.accept()
         
         # Ctrl+0: Reset size
-        elif event.key() == Qt.Key.Key_0 and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        elif a0.key() == Qt.Key.Key_0 and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.resize_overlay(1.0, absolute=True)
-            event.accept()
+            a0.accept()
     
     def toggle_visibility(self):
         """Toggle overlay visibility (hide/show)"""
@@ -241,6 +298,9 @@ class SROverlay(QWidget):
         else:
             self.show()
             self.is_visible = True
+            # Force on top when showing
+            if platform.system() == 'Windows':
+                self.force_on_top()
     
     def toggle_simple_mode(self):
         """Toggle between simple and detailed display modes"""
@@ -312,18 +372,20 @@ class SROverlay(QWidget):
             font.setPointSize(new_size)
             label.setFont(font)
     
-    def wheelEvent(self, event):
+    def wheelEvent(self, a0: Optional[QWheelEvent]) -> None:
         """Handle mouse wheel for resizing (with Ctrl)"""
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if a0 is None:
+            return
+        if a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             # Scroll up = zoom in, scroll down = zoom out
-            delta = event.angleDelta().y()
+            delta = a0.angleDelta().y()
             if delta > 0:
                 self.resize_overlay(1.05)
             elif delta < 0:
                 self.resize_overlay(0.95)
-            event.accept()
+            a0.accept()
         else:
-            event.ignore()
+            a0.ignore()
 
 
 def create_overlay(update_callback: Optional[Callable[[], Dict[str, Any]]] = None) -> tuple:

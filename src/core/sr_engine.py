@@ -3,7 +3,7 @@ Safety Rating Engine for F1 Telemetry
 Implements iRacing-style safety rating with moving average over corners
 """
 from collections import deque
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ..adapters.base_adapter import RaceState
 
 
@@ -227,7 +227,7 @@ class SREngine:
         
         return new_sr
     
-    def get_license_class(self, sr: float = None) -> tuple[str, str]:
+    def get_license_class(self, sr: Optional[float] = None) -> "tuple[str, str]":
         """Get license class and color based on SR (iRacing system)
         
         Args:
